@@ -1,0 +1,177 @@
+            var strictHasEvidence = strictGroup.some(function (item) {
+                return item.parsed.variantEvidence;
+            });
+            var canStrictGroup = !hasForcedGroup && strictGroup.length >= 2 && baseKey.length >= 8 && strictHasEvidence;
+            var canFamilyGroup = !hasForcedGroup && isSafeFamilyCluster(familyGroup, currentFamilyKey);
+            var universalGroup = (!hasForcedGroup && !canFamilyGroup && !canStrictGroup)
+                ? buildUniversalCluster(current, items, handledItems)
+                : [current];
+            var canUniversalGroup = universalGroup.length >= 2;
+
+            var group = hasForcedGroup
+                ? forcedGroup
+                : (canFamilyGroup ? familyGroup : (canStrictGroup ? strictGroup : (canUniversalGroup ? universalGroup : [current])));
+            /* Явные предметные группы показываем даже для единственной позиции. */
+            var canGroup = hasForcedGroup || group.length >= 2;
+
+            var markHandled;
+            for (markHandled = 0; markHandled < group.length; markHandled += 1) {
+                handledItems[group[markHandled].originalIndex] = true;
+            }
+
+            if (!canGroup) {
+                list.appendChild(current.wrapper);
+                setInlineQualityBadges(current.article, current.parsed, true);
+                continue;
+            }
+
+            group.sort(qualitySort);
+
+            var groupHeaderName = hasForcedGroup
+                ? current.parsed.forcedGroupLabel
+                : (canFamilyGroup ? group[0].parsed.familyBase : (canUniversalGroup ? buildUniversalHeader(group) : group[0].parsed.baseName));
+            list.appendChild(buildGroupHeader(groupHeaderName));
+
+            var bucketCounts = {};
+            var bucketKeys = [];
+            var g;
+            for (g = 0; g < group.length; g += 1) {
+                var qKey = group[g].parsed.ratingKey;
+                bucketCounts[qKey] = (bucketCounts[qKey] || 0) + 1;
+                if (bucketKeys.indexOf(qKey) === -1) bucketKeys.push(qKey);
+            }
+            var showSections = bucketKeys.length > 1;
+            var lastQualityKey = null;
+
+            for (g = 0; g < group.length; g += 1) {
+                var item = group[g];
+                var itemQualityKey = item.parsed.ratingKey;
+                var prevItem = g > 0 ? group[g - 1] : null;
+                var nextItem = g + 1 < group.length ? group[g + 1] : null;
+                var subgroupStart = !prevItem || prevItem.parsed.ratingKey !== itemQualityKey;
+                var subgroupEnd = !nextItem || nextItem.parsed.ratingKey !== itemQualityKey;
+
+                if (showSections && itemQualityKey !== lastQualityKey) {
+                    list.appendChild(buildQualitySection(item.parsed, bucketCounts[itemQualityKey]));
+                    lastQualityKey = itemQualityKey;
+                }
+
+                clearGroupingClasses(item.wrapper);
+                item.wrapper.classList.add('moba-grouped');
+                item.wrapper.classList.add(showSections ? 'moba-group-level-2' : 'moba-group-level-1');
+                if (g === 0) item.wrapper.classList.add('moba-group-start');
+                if (g === group.length - 1) item.wrapper.classList.add('moba-group-end');
+                if (showSections && subgroupStart) item.wrapper.classList.add('moba-subgroup-start');
+                if (showSections && subgroupEnd) item.wrapper.classList.add('moba-subgroup-end');
+
+                applyQualityBackground(item.wrapper, item.parsed);
+                list.appendChild(item.wrapper);
+
+                /* Исходное название Moba всегда показываем полностью и дословно. */
+                if (item.titleSpan) item.titleSpan.textContent = getOriginalName(item.article);
+
+                /* Если есть секции качества, не повторяем те же бейджи в каждой строке. */
+                setInlineQualityBadges(item.article, item.parsed, !showSections);
+            }
+        }
+
+        list.dataset.mobaGroupedVersion = '0.12.1';
+    }
+
+    function ensureFilterToggle(sidebar) {
+        if (!sidebar) return;
+        var button = document.getElementById('moba-tweaks-filter-toggle');
+        if (button) return;
+
+        button = document.createElement('button');
+        button.id = 'moba-tweaks-filter-toggle';
+        button.type = 'button';
+        button.textContent = 'Фильтры';
+        button.title = 'Показать или скрыть фильтры';
+        document.body.appendChild(button);
+
+        button.addEventListener('click', function () {
+            document.body.classList.toggle('moba-filters-open');
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') document.body.classList.remove('moba-filters-open');
+        });
+    }
+
+    function annotateLayout() {
+        var divs = Array.prototype.slice.call(document.querySelectorAll('div'));
+        var sidebar = divs.find(function (el) {
+            return el.classList.contains('fb-w-[348px]') && el.querySelector('.catalog-section-filter');
+        });
+        if (!sidebar) return null;
+
+        var mainRow = sidebar.parentElement;
+        var page = mainRow ? mainRow.parentElement : null;
+        var content = mainRow ? Array.prototype.slice.call(mainRow.children).find(function (el) { return el !== sidebar; }) : null;
+        if (!mainRow || !page || !content) return null;
+
+        document.body.classList.add('moba-tweaks-enabled');
+        sidebar.classList.add('moba-filter-sidebar');
+        mainRow.classList.add('moba-main-row');
+        page.classList.add('moba-page');
+        content.classList.add('moba-content');
+
+        var pageChildren = Array.prototype.slice.call(page.children);
+        if (pageChildren[0]) pageChildren[0].classList.add('moba-page-title');
+
+        var contentChildren = Array.prototype.slice.call(content.children);
+        if (contentChildren[0]) contentChildren[0].classList.add('moba-search-summary');
+        if (contentChildren[1]) contentChildren[1].classList.add('moba-category-row');
+        if (contentChildren[2]) contentChildren[2].classList.add('moba-sort-row');
+        if (contentChildren[4]) contentChildren[4].classList.add('moba-divider');
+
+        var exactLabel = divs.find(function (el) {
+            return normalizeSpaces(el.textContent) === 'Точное вхождение запроса';
+        });
+        if (exactLabel) exactLabel.classList.add('moba-exact-label');
+
+        ensureFilterToggle(sidebar);
+        return { sidebar: sidebar, mainRow: mainRow, page: page, content: content };
+    }
+
+    function enhance() {
+        if (state.enhancing) return;
+        state.enhancing = true;
+
+        /* Не реагируем MutationObserver-ом на перестановки, которые делает сам скрипт. */
+        if (state.observer) state.observer.disconnect();
+
+        try {
+            annotateLayout();
+
+            var list = findProductList();
+            if (!list) return;
+            list.classList.add('moba-product-list');
+
+            var wrappers = getProductWrappers(list);
+            var i;
+            for (i = 0; i < wrappers.length; i += 1) {
+                var article = wrappers[i].querySelector(':scope > article');
+                annotateArticle(article);
+            }
+
+            if (wrappers.length) groupProducts(list);
+        } finally {
+            state.enhancing = false;
+            if (state.observer) {
+                state.observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+    }
+
+    function scheduleEnhance() {
+        window.clearTimeout(state.enhanceTimer);
+        state.enhanceTimer = window.setTimeout(enhance, 140);
+    }
+
+    enhance();
+
+    state.observer = new MutationObserver(scheduleEnhance);
+    state.observer.observe(document.body, { childList: true, subtree: true });
+}());
