@@ -1,0 +1,67 @@
+name: Repair Moba Tweaks bootstrap
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore omitted CSS and exact source
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('moba-tweaks.user.js')
+          text = p.read_text(encoding='utf-8')
+
+          needle = "        '.moba-quality-section.moba-quality-bg--unknown{background:#f2f5f7!important;}\\n' +\n"
+          missing = (
+              "        '.moba-product-wrap.moba-quality-bg--best,.moba-product-wrap.moba-quality-bg--best>article{background:#f0faf4!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--very-good,.moba-product-wrap.moba-quality-bg--very-good>article{background:#f4faf5!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--good,.moba-product-wrap.moba-quality-bg--good>article{background:#f7faf1!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--good-muted,.moba-product-wrap.moba-quality-bg--good-muted>article{background:#fdfefc!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--normal,.moba-product-wrap.moba-quality-bg--normal>article{background:#fffbf1!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--budget,.moba-product-wrap.moba-quality-bg--budget>article{background:#fff6f0!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--lowest,.moba-product-wrap.moba-quality-bg--lowest>article{background:#fff5f4!important;}\\n' +\n"
+              "        '.moba-product-wrap.moba-quality-bg--unknown,.moba-product-wrap.moba-quality-bg--unknown>article{background:#f7f9fa!important;}\\n' +\n"
+          )
+
+          if missing not in text:
+              if needle not in text:
+                  raise SystemExit('anchor for omitted CSS not found')
+              text = text.replace(needle, needle + missing, 1)
+
+          joined = "        '.moba-product-wrap.moba-quality-bg--or100,.moba-product-wrap.moba-quality-bg--or100>article{background:#f1faf4!important;}\\n' +        '.moba-product-wrap.moba-quality-bg--or,.moba-product-wrap.moba-quality-bg--or>article{background:#f4faf5!important;}\\n' +"
+          split = "        '.moba-product-wrap.moba-quality-bg--or100,.moba-product-wrap.moba-quality-bg--or100>article{background:#f1faf4!important;}\\n' +\n        '.moba-product-wrap.moba-quality-bg--or,.moba-product-wrap.moba-quality-bg--or>article{background:#f4faf5!important;}\\n' +"
+          if joined in text:
+              text = text.replace(joined, split, 1)
+
+          p.write_text(text, encoding='utf-8', newline='\n')
+
+      - name: Verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check moba-tweaks.user.js
+          test "$(git hash-object moba-tweaks.user.js)" = "b141057c6063e4f6a4354352533aaa23a8de9fec"
+
+      - name: Commit repair and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/repair-bootstrap.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Repair exact Moba Tweaks v0.12.1 source"
+          git push
