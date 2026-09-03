@@ -1,0 +1,41 @@
+name: Bootstrap Moba Tweaks
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assemble userscript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in 01 02 03 04 05 06 07 08; do
+            test -f ".bootstrap/part${n}.txt"
+          done
+          cat .bootstrap/part01.txt .bootstrap/part02.txt .bootstrap/part03.txt .bootstrap/part04.txt \
+              .bootstrap/part05.txt .bootstrap/part06.txt .bootstrap/part07.txt .bootstrap/part08.txt \
+              > moba-tweaks.user.js
+          node --check moba-tweaks.user.js
+
+      - name: Commit assembled file
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .bootstrap
+          rm -f .github/workflows/bootstrap.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Moba Tweaks v0.12.1 with auto-update"
+          git push
