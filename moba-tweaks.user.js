@@ -155,6 +155,14 @@
         '.moba-quality-section.moba-quality-bg--budget{background:#fff0e6!important;}\n' +
         '.moba-quality-section.moba-quality-bg--lowest{background:#ffefed!important;}\n' +
         '.moba-quality-section.moba-quality-bg--unknown{background:#f2f5f7!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--best,.moba-product-wrap.moba-quality-bg--best>article{background:#f0faf4!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--very-good,.moba-product-wrap.moba-quality-bg--very-good>article{background:#f4faf5!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--good,.moba-product-wrap.moba-quality-bg--good>article{background:#f7faf1!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--good-muted,.moba-product-wrap.moba-quality-bg--good-muted>article{background:#fdfefc!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--normal,.moba-product-wrap.moba-quality-bg--normal>article{background:#fffbf1!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--budget,.moba-product-wrap.moba-quality-bg--budget>article{background:#fff6f0!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--lowest,.moba-product-wrap.moba-quality-bg--lowest>article{background:#fff5f4!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--unknown,.moba-product-wrap.moba-quality-bg--unknown>article{background:#f7f9fa!important;}\n' +
         '.moba-quality-section.moba-quality-bg--service-original{background:#e6f4ec!important;}\n' +
         '.moba-quality-section.moba-quality-bg--or-sp{background:#eaf6ee!important;}\n' +
         '.moba-quality-section.moba-quality-bg--or100{background:#eaf6ee!important;}\n' +
@@ -169,7 +177,8 @@
         '.moba-quality-section.moba-quality-bg--none{background:#f7f9fa!important;}\n' +
         '.moba-product-wrap.moba-quality-bg--service-original,.moba-product-wrap.moba-quality-bg--service-original>article{background:#edf8f2!important;}\n' +
         '.moba-product-wrap.moba-quality-bg--or-sp,.moba-product-wrap.moba-quality-bg--or-sp>article{background:#f0faf4!important;}\n' +
-        '.moba-product-wrap.moba-quality-bg--or100,.moba-product-wrap.moba-quality-bg--or100>article{background:#f1faf4!important;}\n' +        '.moba-product-wrap.moba-quality-bg--or,.moba-product-wrap.moba-quality-bg--or>article{background:#f4faf5!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--or100,.moba-product-wrap.moba-quality-bg--or100>article{background:#f1faf4!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--or,.moba-product-wrap.moba-quality-bg--or>article{background:#f4faf5!important;}\n' +
         '.moba-product-wrap.moba-quality-bg--premium,.moba-product-wrap.moba-quality-bg--premium>article{background:#f7faf1!important;}\n' +
         '.moba-product-wrap.moba-quality-bg--soft-oled,.moba-product-wrap.moba-quality-bg--soft-oled>article{background:#fdfcf2!important;}\n' +
         '.moba-product-wrap.moba-quality-bg--oled,.moba-product-wrap.moba-quality-bg--oled>article{background:#fffbf1!important;}\n' +
