@@ -1,0 +1,172 @@
+// ==UserScript==
+// @name         Moba Tweaks
+// @namespace    local.gorchik.moba
+// @version      0.12.1
+// @description  Moba Tweaks: широкая верстка, компактный поиск, понятные предметные группы и простая шкала качества — лучшие варианты сверху, бюджетные снизу.
+// @homepageURL  https://github.com/goreg39/moba-tweaks
+// @updateURL    https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
+// @downloadURL  https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
+// @match        https://sankt-peterburg.moba.ru/*
+// @run-at       document-idle
+// @grant        GM_addStyle
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    var pageUrl = new URL(window.location.href);
+    var isSearchPage = pageUrl.pathname.indexOf('/catalog/') === 0 && pageUrl.searchParams.has('q');
+
+    /*
+     * v0.12: каждый товар обязательно получает предметную категорию.
+     * Ключ категории строится по типу детали + совместимому устройству, а варианты
+     * качества/технологии не дробят одну категорию на множество одинаковых заголовков.
+     */
+    var QUALITY_RULES = [
+        { id: 'service-original', axis: 'class', label: 'СЕРВИСНЫЙ ОРИГИНАЛ', className: 'moba-quality--service-original', rank: 5, regex: /сервисн(?:ый|ого|ому|ым|ом)\s+оригинал/ig },
+        { id: 'or-sp', axis: 'class', label: 'OR (SP)', className: 'moba-quality--or-sp', rank: 10, regex: /\bor\s*\(\s*sp\s*\)/ig },
+        { id: 'or100', axis: 'class', label: 'OR100', className: 'moba-quality--or100', rank: 15, regex: /\bor\s*100\b/ig },
+        { id: 'or', axis: 'class', label: 'OR', className: 'moba-quality--or', rank: 20, regex: /\bor\b(?!\s*(?:100|\(\s*sp\s*\)))/ig },
+        { id: 'premium', axis: 'class', label: 'PREMIUM', className: 'moba-quality--premium', rank: 30, regex: /(?:premium|премиум)/ig },
+        { id: 'remax', axis: 'brand', label: 'REMAX', className: 'moba-quality--brand', rank: 31, regex: /\bremax\b/ig },
+
+        { id: 'soft-oled', axis: 'technology', label: 'SOFT OLED', className: 'moba-quality--soft-oled', rank: 40, regex: /\bsoft\s*[- ]?\s*oled\b/ig },
+        { id: 'hard-oled', axis: 'technology', label: 'HARD OLED', className: 'moba-quality--hard-oled', rank: 60, regex: /\bhard\s*[- ]?\s*oled\b/ig },
+        { id: 'oled', axis: 'technology', label: 'OLED', className: 'moba-quality--oled', rank: 50, regex: /\boled\b/ig },
+        { id: 'incell', axis: 'technology', label: 'IN-CELL', className: 'moba-quality--incell', rank: 70, regex: /\b(?:in\s*[- ]?\s*cell|incell|incel)\b/ig },
+        { id: 'cog', axis: 'technology', label: 'COG', className: 'moba-quality--cog', rank: 75, regex: /\bcog\b/ig },
+        { id: 'cof', axis: 'technology', label: 'COF', className: 'moba-quality--cog', rank: 76, regex: /\bcof\b/ig },
+
+        { id: 'battery-collection', axis: 'brand', label: 'BATTERY COLLECTION', className: 'moba-quality--brand', rank: 100, regex: /\bbattery\s+collection\b/ig },
+        { id: 'zevo', axis: 'brand', label: 'ZEVO', className: 'moba-quality--brand', rank: 101, regex: /\bzevo\b/ig },
+        { id: 'pisen', axis: 'brand', label: 'PISEN', className: 'moba-quality--brand', rank: 102, regex: /\bpisen\b/ig },
+        { id: 'jcp', axis: 'brand', label: 'JCP', className: 'moba-quality--brand', rank: 103, regex: /\bjcp\b/ig },
+        { id: 'optima', axis: 'brand', label: 'OPTIMA', className: 'moba-quality--brand', rank: 104, regex: /(?:\boptima\b|\bоптима\b)/ig },
+        { id: 'mechanico', axis: 'brand', label: 'МЕХАНИКО', className: 'moba-quality--brand', rank: 105, regex: /(?:\bmechanico\b|\bмеханико\b)/ig },
+
+        { id: 'full-size', axis: 'package', label: 'FULL SIZE', className: 'moba-quality--package', rank: 120, regex: /\bfull\s*size\b/ig },
+        { id: 'full-hd', axis: 'package', label: 'FULL HD', className: 'moba-quality--package', rank: 121, regex: /\bfull\s*hd\b/ig },
+        { id: 'kit', axis: 'package', label: 'КОМПЛЕКТ', className: 'moba-quality--package', rank: 122, regex: /коробк[аи]?\s*\+\s*скотч\s*\+\s*отвертк[аи]/ig },
+        { id: 'sp', axis: 'package', label: 'SP', className: 'moba-quality--package', rank: 123, regex: /\(\s*sp\s*\)/ig }
+    ];
+
+    var RATING_LEVELS = {
+        best: { id: 'best', label: 'ЛУЧШЕЕ', rank: 10, tone: 'best' },
+        veryGood: { id: 'very-good', label: 'ОЧЕНЬ ХОРОШЕЕ', rank: 20, tone: 'very-good' },
+        good: { id: 'good', label: 'ХОРОШЕЕ', rank: 30, tone: 'good' },
+        normal: { id: 'normal', label: 'НОРМАЛЬНОЕ', rank: 40, tone: 'normal' },
+        budget: { id: 'budget', label: 'БЮДЖЕТНОЕ', rank: 50, tone: 'budget' },
+        lowest: { id: 'lowest', label: 'САМОЕ БЮДЖЕТНОЕ', rank: 60, tone: 'lowest' },
+        unknown: { id: 'unknown', label: 'НЕ ОПРЕДЕЛЕНО', rank: 90, tone: 'unknown' }
+    };
+
+    var COLOR_RULES = [
+        ['Черный', /(?:черный|чёрный)\s*$/i],
+        ['Белый', /белый\s*$/i],
+        ['Синий', /синий\s*$/i],
+        ['Красный', /красный\s*$/i],
+        ['Зеленый', /(?:зеленый|зелёный)\s*$/i],
+        ['Серый', /серый\s*$/i],
+        ['Голубой', /голубой\s*$/i],
+        ['Фиолетовый', /фиолетовый\s*$/i],
+        ['Розовый', /розовый\s*$/i],
+        ['Золотой', /золотой\s*$/i],
+        ['Серебристый', /серебристый\s*$/i],
+        ['Оранжевый', /оранжевый\s*$/i],
+        ['Желтый', /(?:желтый|жёлтый)\s*$/i],
+        ['Бежевый', /бежевый\s*$/i],
+        ['Бронзовый', /бронзовый\s*$/i],
+        ['Зеленый', /\bgreen\s*$/i],
+        ['Синий', /\bblue\s*$/i],
+        ['Красный', /\bred\s*$/i],
+        ['Белый', /\bwhite\s*$/i],
+        ['Черный', /\bblack\s*$/i],
+        ['Золотой', /\bgold\s*$/i],
+        ['Серый', /\bgray\s*$/i],
+        ['Серый', /\bgrey\s*$/i],
+        ['Розовый', /\bpink\s*$/i],
+        ['Фиолетовый', /\bpurple\s*$/i]
+    ];
+
+    GM_addStyle('\n' +
+        'body.moba-tweaks-global .cont{width:min(96vw,1920px)!important;max-width:none!important;margin-left:auto!important;margin-right:auto!important;}\n' +
+        'body.moba-tweaks-enabled .moba-page{margin-bottom:56px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-page-title{margin-bottom:0!important;}\n' +
+        'body.moba-tweaks-enabled .moba-main-row{margin-top:18px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-search-summary,body.moba-tweaks-enabled .moba-category-row,body.moba-tweaks-enabled .moba-sort-row{margin-bottom:10px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-divider{margin-top:12px!important;margin-bottom:12px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-exact-label{margin-bottom:6px!important;padding-top:4px!important;padding-bottom:4px!important;font-size:12px!important;}\n' +
+
+        '@media (min-width:1280px){\n' +
+        'body.moba-tweaks-enabled .moba-filter-sidebar{display:none!important;}\n' +
+        'body.moba-tweaks-enabled.moba-filters-open .moba-filter-sidebar{display:block!important;position:fixed!important;left:18px!important;top:150px!important;width:310px!important;max-height:calc(100vh - 170px)!important;overflow:auto!important;z-index:1001!important;margin:0!important;padding:0!important;background:#fff!important;border-radius:12px!important;box-shadow:0 10px 35px rgba(0,0,0,.18)!important;}\n' +
+        '#moba-tweaks-filter-toggle{display:flex;position:fixed;left:0;top:50%;z-index:1002;width:34px;height:92px;padding:7px 5px;align-items:center;justify-content:center;border:1px solid #1c7bc9;border-left:0;border-radius:0 9px 9px 0;background:#fff;color:#1c7bc9;box-shadow:0 3px 14px rgba(0,0,0,.12);cursor:pointer;font:600 12px/1 Arial,sans-serif;writing-mode:vertical-rl;transform:translateY(-50%) rotate(180deg);user-select:none;}\n' +
+        '#moba-tweaks-filter-toggle:hover,body.moba-filters-open #moba-tweaks-filter-toggle{background:#eaf5ff;}\n' +
+
+        'body.moba-tweaks-enabled .moba-product-card{min-height:60px!important;align-items:stretch!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-image-link{display:block!important;width:52px!important;min-width:52px!important;height:52px!important;margin:4px 0 4px 6px!important;border-right:0!important;border-bottom:0!important;border-radius:5px!important;overflow:hidden!important;align-self:center!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-image-link img{width:100%!important;height:100%!important;object-fit:contain!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-body{display:grid!important;grid-template-columns:minmax(0,1fr) 96px 190px!important;gap:10px!important;align-items:center!important;padding:5px 10px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-info{margin:0!important;min-width:0!important;align-self:center!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-meta-row{margin-bottom:2px!important;gap:7px!important;align-items:center!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-meta-row [class*="fb-mobile-14"],body.moba-tweaks-enabled .moba-product-meta-row [class*="fb-desktop-14"]{font-size:11px!important;line-height:14px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-title-line{display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:wrap!important;min-width:0!important;font-size:14px!important;line-height:17px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-title{display:inline!important;min-width:0!important;font-size:14px!important;line-height:17px!important;overflow:hidden!important;text-overflow:ellipsis!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-price{margin:0!important;font-size:16px!important;line-height:20px!important;white-space:nowrap!important;font-variant-numeric:tabular-nums;}\n' +
+        'body.moba-tweaks-enabled .moba-product-price>div:first-child{font-size:16px!important;line-height:20px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-actions{min-width:0!important;align-items:center!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-actions .cart-btn__add,body.moba-tweaks-enabled .moba-product-actions .cart-btn__counter{height:34px!important;min-height:34px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-actions .cart-btn__counter{padding-left:8px!important;padding-right:8px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-product-actions .cart-btn__counter button{width:24px!important;height:24px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-favorite-wrap{margin-left:7px!important;}\n' +
+        'body.moba-tweaks-enabled .moba-favorite-wrap>button{width:34px!important;height:34px!important;}\n' +
+        '}\n' +
+        '@media (max-width:1279px){#moba-tweaks-filter-toggle{display:none!important;}}\n' +
+
+        '.moba-native-quality-hidden{display:none!important;}\n' +
+        '.moba-quality-badges{display:inline-flex;align-items:center;gap:4px;flex:none;}\n' +
+        '.moba-quality-badge{display:inline-flex;align-items:center;height:19px;padding:0 6px;border-radius:5px;color:#fff;font:700 10px/19px Arial,sans-serif;letter-spacing:.25px;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);}\n' +
+        '.moba-quality--service-original{background:#075c36;}\n' +
+        '.moba-quality--or-sp{background:#0d7041;}\n' +
+        '.moba-quality--or100{background:#126d3d;}\n' +
+        '.moba-quality--or{background:#238443;}\n' +
+        '.moba-quality--premium{background:#65a52c;}\n' +
+        '.moba-quality--soft-oled{background:#a7a116;}\n' +
+        '.moba-quality--oled{background:#d19100;}\n' +
+        '.moba-quality--hard-oled{background:#d96915;}\n' +
+        '.moba-quality--incell{background:#c43f35;}\n' +
+        '.moba-quality--cog{background:#8a6b27;}\n' +
+        '.moba-quality--brand{background:#55758c;}\n' +
+        '.moba-quality--package{background:#75818b;}\n' +
+        '.moba-quality--none{background:#7b8790;}\n' +
+        '.moba-rating--best{background:#0d5b35;}\n' +
+        '.moba-rating--very-good{background:#238443;}\n' +
+        '.moba-rating--good{background:#65a52c;}\n' +
+        '.moba-rating--good-muted{background:#a6b396;}\n' +
+        '.moba-rating--normal{background:#d19100;}\n' +
+        '.moba-rating--budget{background:#d96915;}\n' +
+        '.moba-rating--lowest{background:#c43f35;}\n' +
+        '.moba-rating--unknown{background:#7b8790;}\n' +
+        '.moba-quality-section.moba-quality-bg--best{background:#e9f6ee!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--very-good{background:#eef8f1!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--good{background:#f3f8ea!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--good-muted{background:#fafbf8!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--normal{background:#fff7e3!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--budget{background:#fff0e6!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--lowest{background:#ffefed!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--unknown{background:#f2f5f7!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--service-original{background:#e6f4ec!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--or-sp{background:#eaf6ee!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--or100{background:#eaf6ee!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--or{background:#eef8f1!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--premium{background:#f3f8ea!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--soft-oled{background:#faf9e7!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--oled{background:#fff7e3!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--hard-oled{background:#fff0e6!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--incell{background:#ffefed!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--cog{background:#faf5e8!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--neutral{background:#f0f5f8!important;}\n' +
+        '.moba-quality-section.moba-quality-bg--none{background:#f7f9fa!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--service-original,.moba-product-wrap.moba-quality-bg--service-original>article{background:#edf8f2!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--or-sp,.moba-product-wrap.moba-quality-bg--or-sp>article{background:#f0faf4!important;}\n' +
+        '.moba-product-wrap.moba-quality-bg--or100,.moba-product-wrap.moba-quality-bg--or100>article{background:#f1faf4!important;}\n' +
