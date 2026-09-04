@@ -33,3 +33,5 @@ jobs:
           git add moba-tweaks.user.js .github/workflows/fix-model-tooltip.yml tools/patch_v0151.py
           git commit -m "Fix waiting tooltip and multi-model compatibility match"
           git push
+
+# retry after v0.15 availability anchor fix
