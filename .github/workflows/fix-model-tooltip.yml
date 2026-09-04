@@ -34,4 +34,4 @@ jobs:
           git commit -m "Fix waiting tooltip and multi-model compatibility match"
           git push
 
-# retry after v0.15 availability anchor fix
+# retry after regex replacement fix
