@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moba Tweaks
 // @namespace    local.gorchik.moba
-// @version      0.13.0
+// @version      0.14.0
 // @description  Moba Tweaks: широкая верстка, компактный поиск, понятные предметные группы и простая шкала качества — лучшие варианты сверху, бюджетные снизу.
 // @homepageURL  https://github.com/goreg39/moba-tweaks
 // @updateURL    https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
@@ -16,6 +16,72 @@
 
     var pageUrl = new URL(window.location.href);
     var isSearchPage = pageUrl.pathname.indexOf('/catalog/') === 0 && pageUrl.searchParams.has('q');
+
+    var RETURN_SEARCH_KEY = 'moba-tweaks-return-search';
+
+    function isGlobalEditableTarget(target) {
+        if (!target || !target.tagName) return false;
+        var tagName = target.tagName.toLowerCase();
+        return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+    }
+
+    function parseReturnSearchState() {
+        try {
+            var raw = window.sessionStorage.getItem(RETURN_SEARCH_KEY);
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (!parsed || !parsed.searchUrl || !parsed.productUrl) return null;
+            return parsed;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function isSearchUrl(value) {
+        try {
+            var url = new URL(value, window.location.origin);
+            return url.origin === window.location.origin &&
+                url.pathname.indexOf('/catalog/') === 0 && url.searchParams.has('q');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function installBackspaceReturn() {
+        if (document.documentElement.dataset.mobaBackspaceReturn === '1') return;
+        document.documentElement.dataset.mobaBackspaceReturn = '1';
+
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented || event.key !== 'Backspace') return;
+            if (isGlobalEditableTarget(event.target)) return;
+            if (event.ctrlKey || event.altKey || event.metaKey) return;
+            if (pageUrl.pathname.indexOf('/catalog/') !== 0 || pageUrl.searchParams.has('q')) return;
+
+            var referrerIsSearch = isSearchUrl(document.referrer);
+            var state = parseReturnSearchState();
+            var storedMatchesCurrent = false;
+            if (state) {
+                try {
+                    storedMatchesCurrent = new URL(state.productUrl, window.location.origin).href === window.location.href;
+                } catch (e) {
+                    storedMatchesCurrent = false;
+                }
+            }
+
+            if (!referrerIsSearch && !storedMatchesCurrent) return;
+
+            event.preventDefault();
+            if (storedMatchesCurrent) window.sessionStorage.removeItem(RETURN_SEARCH_KEY);
+
+            if (window.history.length > 1) {
+                window.history.back();
+            } else if (storedMatchesCurrent && isSearchUrl(state.searchUrl)) {
+                window.location.href = state.searchUrl;
+            }
+        });
+    }
+
+    installBackspaceReturn();
 
     /*
      * v0.12: каждый товар обязательно получает предметную категорию.
@@ -226,6 +292,21 @@
         '.moba-product-wrap.moba-keyboard-selected>article{position:relative!important;}\n' +
         '.moba-product-wrap.moba-keyboard-selected>article:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.75);}\n' +
 
+        '.moba-group-model{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:5px;}\n' +
+        '.moba-group-model--match{background:#e2f4e8;color:#176b3a;box-shadow:inset 0 0 0 1px #b9dfc7;}\n' +
+        '.moba-group-model--mismatch{background:#fde8e7;color:#a9302a;box-shadow:inset 0 0 0 1px #efc0bd;}\n' +
+        '.moba-stock-status{display:inline-flex!important;align-items:center!important;min-height:18px!important;padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;}\n' +
+        '.moba-stock-status--unavailable{background:#b42318!important;color:#fff!important;}\n' +
+        '.moba-stock-status--waiting{background:#f79009!important;color:#fff!important;}\n' +
+        '.moba-stock-status--limited{background:#fdb022!important;color:#4a3300!important;}\n' +
+        '.moba-stock-status--available{color:#207a43!important;font-weight:700!important;}\n' +
+        '.moba-product-wrap.moba-stock-wrapper--unavailable{box-shadow:inset -5px 0 0 #d92d20!important;}\n' +
+        '.moba-product-wrap.moba-stock-wrapper--unavailable .moba-product-title,.moba-product-wrap.moba-stock-wrapper--unavailable .moba-product-price{opacity:.62!important;}\n' +
+        '.moba-product-wrap.moba-stock-wrapper--waiting{box-shadow:inset -5px 0 0 #f79009!important;}\n' +
+        '.moba-product-wrap.moba-stock-wrapper--limited{box-shadow:inset -5px 0 0 #fdb022!important;}\n' +
+        '#moba-tweaks-image-modal{display:none;position:fixed;inset:0;z-index:2147483600;align-items:center;justify-content:center;padding:28px;background:rgba(17,24,39,.86);cursor:zoom-out;}\n' +
+        '#moba-tweaks-image-modal img{display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.45);cursor:default;}\n' +
+        '#moba-tweaks-image-modal button{position:fixed;right:24px;top:18px;width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.94);color:#222;font:700 26px/42px Arial,sans-serif;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.28);}\n' +
         '#moba-tweaks-image-preview{display:none;position:fixed;z-index:2147483000;width:410px;height:410px;padding:8px;background:#fff;border:1px solid #d9e2e8;border-radius:10px;box-shadow:0 14px 45px rgba(0,0,0,.24);pointer-events:none;}\n' +
         '#moba-tweaks-image-preview img{width:100%;height:100%;object-fit:contain;display:block;}\n'
     );
@@ -233,7 +314,7 @@
     document.body.classList.add('moba-tweaks-global');
     if (!isSearchPage) return;
 
-    var state = { enhanceTimer: 0, preview: null, observer: null, enhancing: false, selectedProduct: null };
+    var state = { enhanceTimer: 0, preview: null, imageModal: null, observer: null, enhancing: false, selectedProduct: null };
 
     function normalizeSpaces(text) {
         return String(text || '').replace(/\s+/g, ' ').trim();
@@ -1060,12 +1141,68 @@
         box.style.top = top + 'px';
     }
 
+    function ensureImageModal() {
+        if (state.imageModal && document.body.contains(state.imageModal)) return state.imageModal;
+
+        var modal = document.createElement('div');
+        modal.id = 'moba-tweaks-image-modal';
+        var img = document.createElement('img');
+        img.alt = '';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '×';
+        close.title = 'Закрыть';
+        modal.appendChild(img);
+        modal.appendChild(close);
+        document.body.appendChild(modal);
+
+        function closeModal() {
+            modal.style.display = 'none';
+            img.removeAttribute('src');
+        }
+
+        close.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeModal();
+        });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeModal();
+        });
+        modal.closeModal = closeModal;
+        state.imageModal = modal;
+        return modal;
+    }
+
+    function openImageModal(sourceImg) {
+        if (!sourceImg) return;
+        var modal = ensureImageModal();
+        var modalImg = modal.querySelector('img');
+        var candidates = getPreviewCandidates(sourceImg.currentSrc || sourceImg.src);
+        var index = 0;
+        modalImg.onerror = function () {
+            index += 1;
+            if (index < candidates.length) modalImg.src = candidates[index];
+        };
+        modalImg.src = candidates[0];
+        modalImg.alt = sourceImg.alt || '';
+        modal.style.display = 'flex';
+        if (state.preview) state.preview.style.display = 'none';
+    }
+
     function enableHoverPreview(imageLink) {
         if (!imageLink || imageLink.dataset.mobaPreviewReady === '1') return;
         imageLink.dataset.mobaPreviewReady = '1';
 
         var sourceImg = imageLink.querySelector('img');
         if (!sourceImg) return;
+
+        imageLink.addEventListener('click', function (event) {
+            if (event.button !== 0 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openImageModal(sourceImg);
+        });
 
         imageLink.addEventListener('mouseenter', function (event) {
             var box = ensurePreview();
@@ -1089,12 +1226,49 @@
         });
     }
 
+    function classifyStockStatus(text) {
+        var value = normalizeSpaces(text).toLowerCase();
+        if (!value || value.length > 60) return '';
+        if (/(?:нет\s+в\s+наличии|нет\s+на\s+складе|отсутствует|законч(?:ил|илс|илась|илось|ились)|распродано)/i.test(value)) return 'unavailable';
+        if (/(?:под\s+заказ|ожидается|ожидаем|в\s+пути|скоро\s+будет|поставка)/i.test(value)) return 'waiting';
+        if (/(?:^|\s)(?:мало|заканчивается|последн(?:ий|яя|ие)|осталось\s+\d+)/i.test(value)) return 'limited';
+        if (/(?:^|\s)в\s+наличии(?:\s|$|:)/i.test(value)) return 'available';
+        return '';
+    }
+
+    function annotateAvailability(article, wrapper) {
+        if (!article) return;
+        if (wrapper) {
+            wrapper.classList.remove('moba-stock-wrapper--unavailable', 'moba-stock-wrapper--waiting', 'moba-stock-wrapper--limited');
+        }
+
+        var previous = article.querySelectorAll('.moba-stock-status');
+        var p;
+        for (p = 0; p < previous.length; p += 1) {
+            previous[p].classList.remove('moba-stock-status', 'moba-stock-status--unavailable', 'moba-stock-status--waiting', 'moba-stock-status--limited', 'moba-stock-status--available');
+        }
+
+        var nodes = Array.prototype.slice.call(article.querySelectorAll('span,div,p')).filter(function (node) {
+            var text = normalizeSpaces(node.textContent);
+            return text && text.length <= 60 && classifyStockStatus(text);
+        });
+        if (!nodes.length) return;
+        nodes.sort(function (a, b) { return normalizeSpaces(a.textContent).length - normalizeSpaces(b.textContent).length; });
+
+        var node = nodes[0];
+        var status = classifyStockStatus(node.textContent);
+        if (!status) return;
+        node.classList.add('moba-stock-status', 'moba-stock-status--' + status);
+        if (wrapper && status !== 'available') wrapper.classList.add('moba-stock-wrapper--' + status);
+    }
+
     function annotateArticle(article) {
         if (!article) return null;
 
         article.classList.add('moba-product-card');
         var wrapper = article.parentElement;
         if (wrapper) wrapper.classList.add('moba-product-wrap');
+        annotateAvailability(article, wrapper);
 
         var imageLink = article.children[0];
         var body = article.children[1];
@@ -1151,9 +1325,7 @@
 
 
     function isEditableTarget(target) {
-        if (!target || !target.tagName) return false;
-        var tagName = target.tagName.toLowerCase();
-        return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+        return isGlobalEditableTarget(target);
     }
 
     function isKeyboardProductVisible(wrapper) {
@@ -1230,6 +1402,12 @@
         if (newTab) {
             window.open(link.href, '_blank', 'noopener');
         } else {
+            try {
+                window.sessionStorage.setItem(RETURN_SEARCH_KEY, JSON.stringify({
+                    searchUrl: window.location.href,
+                    productUrl: link.href
+                }));
+            } catch (e) {}
             link.click();
         }
         return true;
@@ -1259,6 +1437,7 @@
             if (event.key === 'Escape') {
                 document.body.classList.remove('moba-filters-open');
                 if (state.preview) state.preview.style.display = 'none';
+                if (state.imageModal && state.imageModal.closeModal) state.imageModal.closeModal();
                 clearKeyboardSelection();
                 return;
             }
@@ -1321,10 +1500,91 @@
         }
     }
 
+    function modelTokens(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/ё/g, 'е')
+            .replace(/[^a-zа-я0-9]+/g, ' ')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+    }
+
+    function getSearchModelTokens() {
+        var tokens = modelTokens(pageUrl.searchParams.get('q') || '');
+        var stop = {
+            'or': 1, 'or100': 1, 'sp': 1, 'premium': 1, 'премиум': 1, 'optima': 1, 'оптима': 1,
+            'oled': 1, 'soft': 1, 'hard': 1, 'incell': 1, 'cell': 1, 'in': 1, 'cog': 1, 'cof': 1,
+            'дисплей': 1, 'экран': 1, 'модуль': 1, 'акб': 1, 'аккумулятор': 1, 'батарея': 1,
+            'стекло': 1, 'шлейф': 1, 'камера': 1, 'крышка': 1, 'рамка': 1, 'для': 1,
+            'черный': 1, 'белый': 1, 'синий': 1, 'красный': 1, 'зеленый': 1,
+            'серый': 1, 'голубой': 1, 'фиолетовый': 1, 'розовый': 1, 'золотой': 1
+        };
+        tokens = tokens.filter(function (token) { return !stop[token]; });
+        if (!tokens.some(function (token) { return /\d/.test(token); })) return [];
+        return tokens;
+    }
+
+    function modelTokenMatches(queryToken, candidateToken) {
+        if (queryToken === candidateToken) return true;
+        if (queryToken.length >= 4 && candidateToken.length >= 4 && /\d/.test(queryToken) && /\d/.test(candidateToken)) {
+            return candidateToken.indexOf(queryToken) === 0 || queryToken.indexOf(candidateToken) === 0;
+        }
+        return false;
+    }
+
+    function classifyCompatibilityMatch(label) {
+        var queryTokens = getSearchModelTokens();
+        if (!queryTokens.length) return '';
+        var candidateTokens = modelTokens(label);
+        if (!candidateTokens.length) return '';
+
+        var allMatched = queryTokens.every(function (queryToken) {
+            return candidateTokens.some(function (candidateToken) {
+                return modelTokenMatches(queryToken, candidateToken);
+            });
+        });
+
+        var variantWords = ['pro', 'max', 'plus', 'mini', 'ultra', 'lite', 'fe', 'se', 'air'];
+        var queryVariants = queryTokens.filter(function (token) { return variantWords.indexOf(token) !== -1; });
+        var candidateVariants = candidateTokens.filter(function (token) { return variantWords.indexOf(token) !== -1; });
+        var extraVariant = candidateVariants.some(function (token) { return queryVariants.indexOf(token) === -1; });
+        var missingVariant = queryVariants.some(function (token) { return candidateVariants.indexOf(token) === -1; });
+
+        if (allMatched && !extraVariant && !missingVariant) return 'match';
+        if (allMatched && (extraVariant || missingVariant)) return 'mismatch';
+
+        var familyWords = ['iphone', 'ipad', 'samsung', 'galaxy', 'xiaomi', 'redmi', 'poco', 'honor', 'realme', 'tecno', 'infinix', 'oppo', 'vivo', 'huawei', 'pixel'];
+        var sameFamily = queryTokens.some(function (token) {
+            return familyWords.indexOf(token) !== -1 && candidateTokens.indexOf(token) !== -1;
+        });
+        var queryNumber = queryTokens.find(function (token) { return /^\d{1,4}$/.test(token); });
+        var candidateNumber = candidateTokens.find(function (token) { return /^\d{1,4}$/.test(token); });
+        if (sameFamily && queryNumber && candidateNumber && queryNumber !== candidateNumber) return 'mismatch';
+
+        return '';
+    }
+
     function buildGroupHeader(baseName) {
         var header = document.createElement('div');
         header.className = 'moba-group-header';
-        header.textContent = baseName;
+
+        var separatorIndex = baseName.indexOf(' - ');
+        if (separatorIndex < 0) {
+            header.textContent = baseName;
+            return header;
+        }
+
+        var prefix = baseName.slice(0, separatorIndex + 3);
+        var model = baseName.slice(separatorIndex + 3);
+        header.appendChild(document.createTextNode(prefix));
+
+        var modelNode = document.createElement('span');
+        modelNode.className = 'moba-group-model';
+        modelNode.textContent = model;
+        var matchClass = classifyCompatibilityMatch(model);
+        if (matchClass) modelNode.classList.add('moba-group-model--' + matchClass);
+        header.appendChild(modelNode);
         return header;
     }
 
@@ -1492,7 +1752,7 @@
             }
         }
 
-        list.dataset.mobaGroupedVersion = '0.13.0';
+        list.dataset.mobaGroupedVersion = '0.14.0';
     }
 
     function ensureFilterToggle(sidebar) {
