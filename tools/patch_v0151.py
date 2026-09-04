@@ -60,11 +60,12 @@ tooltip_block = r'''    function suppressWaitingTooltip(node) {
 '''
 replace_once(tooltip_anchor, tooltip_block, 'tooltip suppressor')
 
-status_anchor = """        node.classList.add('moba-stock-status', 'moba-stock-status--' + status);
+status_anchor = """        var selected = candidates[0];
+        selected.node.classList.add('moba-stock-status', 'moba-stock-status--' + selected.status);
 """
 replace_once(
     status_anchor,
-    status_anchor + "        if (status === 'waiting') suppressWaitingTooltip(node);\n",
+    status_anchor + "        if (selected.status === 'waiting') suppressWaitingTooltip(selected.node);\n",
     'waiting tooltip call'
 )
 
