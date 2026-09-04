@@ -38,7 +38,7 @@ jobs:
           replace_once(
               waiting_css,
               "        '.moba-stock-status--waiting{background:#f79009!important;color:#fff!important;pointer-events:none!important;}\\n' +\n"
-              "        '.moba-stock-tooltip-disabled{pointer-events:none!important;}\\nn' +\n",
+              "        '.moba-stock-tooltip-disabled{pointer-events:none!important;}\\n' +\n",
               'waiting tooltip css'
           )
 
