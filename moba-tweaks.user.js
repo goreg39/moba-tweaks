@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moba Tweaks
 // @namespace    local.gorchik.moba
-// @version      0.15.0
+// @version      0.15.1
 // @description  Moba Tweaks: широкая верстка, компактный поиск, понятные предметные группы и простая шкала качества — лучшие варианты сверху, бюджетные снизу.
 // @homepageURL  https://github.com/goreg39/moba-tweaks
 // @updateURL    https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
@@ -297,7 +297,8 @@
         '.moba-group-model--mismatch{background:#fde8e7;color:#a9302a;box-shadow:inset 0 0 0 1px #efc0bd;}\n' +
         '.moba-stock-status{padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;box-decoration-break:clone;-webkit-box-decoration-break:clone;}\n' +
         '.moba-stock-status--unavailable{background:#b42318!important;color:#fff!important;}\n' +
-        '.moba-stock-status--waiting{background:#f79009!important;color:#fff!important;}\n' +
+        '.moba-stock-status--waiting{background:#f79009!important;color:#fff!important;pointer-events:none!important;}\n' +
+        '.moba-stock-tooltip-disabled{pointer-events:none!important;}\n' +
         '.moba-stock-status--limited{background:#fdb022!important;color:#4a3300!important;}\n' +
         '.moba-stock-status--available{color:#207a43!important;font-weight:700!important;}\n' +
         '.moba-stock-status--other-store{background:#fff1d6!important;color:#9a4f00!important;box-shadow:inset 0 0 0 1px #f0c36a;}\n' +
@@ -1385,6 +1386,36 @@
         });
     }
 
+    function suppressWaitingTooltip(node) {
+        if (!node) return;
+
+        var attrs = [
+            'title',
+            'aria-describedby',
+            'data-tooltip',
+            'data-tooltip-content',
+            'data-tippy-content',
+            'data-original-title',
+            'x-tooltip'
+        ];
+
+        var current = node;
+        var article = node.closest ? node.closest('article') : null;
+        var hops = 0;
+        while (current && current !== article && hops < 4) {
+            var hadTooltipAttribute = false;
+            for (var i = 0; i < attrs.length; i += 1) {
+                if (current.hasAttribute && current.hasAttribute(attrs[i])) {
+                    current.removeAttribute(attrs[i]);
+                    hadTooltipAttribute = true;
+                }
+            }
+            if (current === node || hadTooltipAttribute) current.classList.add('moba-stock-tooltip-disabled');
+            current = current.parentElement;
+            hops += 1;
+        }
+    }
+
     function classifyStockStatus(text) {
         var value = normalizeSpaces(text).toLowerCase();
         if (!value || value.length > 120) return '';
@@ -1461,6 +1492,7 @@
 
         var selected = candidates[0];
         selected.node.classList.add('moba-stock-status', 'moba-stock-status--' + selected.status);
+        if (selected.status === 'waiting') suppressWaitingTooltip(selected.node);
 
         if (selected.status !== 'available') {
             suppressNativeAvailableMarker(article);
@@ -1745,28 +1777,72 @@
         var candidateTokens = modelTokens(label);
         if (!candidateTokens.length) return '';
 
-        var allMatched = queryTokens.every(function (queryToken) {
-            return candidateTokens.some(function (candidateToken) {
-                return modelTokenMatches(queryToken, candidateToken);
-            });
-        });
-
-        var variantWords = ['pro', 'max', 'plus', 'mini', 'ultra', 'lite', 'fe', 'se', 'air'];
-        var queryVariants = queryTokens.filter(function (token) { return variantWords.indexOf(token) !== -1; });
-        var candidateVariants = candidateTokens.filter(function (token) { return variantWords.indexOf(token) !== -1; });
-        var extraVariant = candidateVariants.some(function (token) { return queryVariants.indexOf(token) === -1; });
-        var missingVariant = queryVariants.some(function (token) { return candidateVariants.indexOf(token) === -1; });
-
-        if (allMatched && !extraVariant && !missingVariant) return 'match';
-        if (allMatched && (extraVariant || missingVariant)) return 'mismatch';
-
         var familyWords = ['iphone', 'ipad', 'samsung', 'galaxy', 'xiaomi', 'redmi', 'poco', 'honor', 'realme', 'tecno', 'infinix', 'oppo', 'vivo', 'huawei', 'pixel'];
-        var sameFamily = queryTokens.some(function (token) {
-            return familyWords.indexOf(token) !== -1 && candidateTokens.indexOf(token) !== -1;
-        });
-        var queryNumber = queryTokens.find(function (token) { return /^\d{1,4}$/.test(token); });
-        var candidateNumber = candidateTokens.find(function (token) { return /^\d{1,4}$/.test(token); });
-        if (sameFamily && queryNumber && candidateNumber && queryNumber !== candidateNumber) return 'mismatch';
+        var variantWords = ['pro', 'max', 'plus', 'mini', 'ultra', 'lite', 'fe', 'se', 'air'];
+
+        var queryFamilies = queryTokens.filter(function (token) { return familyWords.indexOf(token) !== -1; });
+        if (queryFamilies.length) {
+            var sameFamily = queryFamilies.some(function (token) { return candidateTokens.indexOf(token) !== -1; });
+            if (!sameFamily) return '';
+        }
+
+        var modelIndex = -1;
+        for (var i = 0; i < queryTokens.length; i += 1) {
+            if (/\d/.test(queryTokens[i])) {
+                modelIndex = i;
+                break;
+            }
+        }
+        if (modelIndex < 0) return '';
+
+        /*
+         * Сравниваем именно модельный хвост запроса, а не все слова заголовка.
+         * Это важно для совместимостей вида
+         * "S24 Ultra/.../S24 FE/...": наличие Ultra у соседней модели не должно
+         * делать S24 FE несовместимым с запросом S24 FE.
+         */
+        var queryCore = queryTokens.slice(modelIndex);
+        var queryHasVariant = queryCore.some(function (token) { return variantWords.indexOf(token) !== -1; });
+        var foundCore = false;
+        var foundVariantConflict = false;
+
+        for (i = 0; i <= candidateTokens.length - queryCore.length; i += 1) {
+            var matches = true;
+            for (var q = 0; q < queryCore.length; q += 1) {
+                if (!modelTokenMatches(queryCore[q], candidateTokens[i + q])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (!matches) continue;
+
+            foundCore = true;
+            var nextToken = candidateTokens[i + queryCore.length] || '';
+            var nextIsVariant = variantWords.indexOf(nextToken) !== -1;
+
+            if (!queryHasVariant && nextIsVariant) {
+                foundVariantConflict = true;
+                continue;
+            }
+
+            if (queryHasVariant && nextIsVariant && queryCore.indexOf(nextToken) === -1) {
+                foundVariantConflict = true;
+                continue;
+            }
+
+            return 'match';
+        }
+
+        if (foundCore && foundVariantConflict) return 'mismatch';
+
+        var queryNumber = queryCore.find(function (token) { return /\d/.test(token); });
+        var candidateNumbers = candidateTokens.filter(function (token) { return /\d/.test(token); });
+        if (queryNumber && candidateNumbers.length && queryFamilies.length) {
+            var hasCompatibleNumber = candidateNumbers.some(function (token) {
+                return modelTokenMatches(queryNumber, token);
+            });
+            if (!hasCompatibleNumber) return 'mismatch';
+        }
 
         return '';
     }
@@ -1958,7 +2034,7 @@
             }
         }
 
-        list.dataset.mobaGroupedVersion = '0.15.0';
+        list.dataset.mobaGroupedVersion = '0.15.1';
     }
 
     function ensureFilterToggle(sidebar) {
