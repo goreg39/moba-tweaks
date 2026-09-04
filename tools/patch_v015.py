@@ -1,0 +1,399 @@
+from pathlib import Path
+
+path = Path('moba-tweaks.user.js')
+text = path.read_text(encoding='utf-8')
+
+
+def replace_once(old, new, label):
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
+    text = text.replace(old, new, 1)
+
+
+replace_once('// @version      0.14.0', '// @version      0.15.0', 'version')
+
+replace_once(
+    "        '.moba-stock-status{display:inline-flex!important;align-items:center!important;min-height:18px!important;padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;}\\n' +\n",
+    "        '.moba-stock-status{padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;box-decoration-break:clone;-webkit-box-decoration-break:clone;}\\n' +\n",
+    'do not force native stock visibility'
+)
+
+css_anchor = "        '.moba-stock-status--available{color:#207a43!important;font-weight:700!important;}\\n' +\n"
+replace_once(
+    css_anchor,
+    css_anchor
+    + "        '.moba-stock-status--other-store{background:#fff1d6!important;color:#9a4f00!important;box-shadow:inset 0 0 0 1px #f0c36a;}\\n' +\n"
+    + "        '.moba-stock-native-available-suppressed{display:none!important;}\\n' +\n",
+    'other-store stock css'
+)
+
+wrapper_anchor = "        '.moba-product-wrap.moba-stock-wrapper--limited{box-shadow:inset -5px 0 0 #fdb022!important;}\\n' +\n"
+replace_once(
+    wrapper_anchor,
+    wrapper_anchor + "        '.moba-product-wrap.moba-stock-wrapper--other-store{box-shadow:inset -5px 0 0 #d97706!important;}\\n' +\n",
+    'other-store wrapper css'
+)
+
+replace_once(
+    "        '#moba-tweaks-image-modal{display:none;position:fixed;inset:0;z-index:2147483600;align-items:center;justify-content:center;padding:28px;background:rgba(17,24,39,.86);cursor:zoom-out;}\\n' +\n"
+    "        '#moba-tweaks-image-modal img{display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.45);cursor:default;}\\n' +\n",
+    "        '#moba-tweaks-image-modal{display:none;position:fixed;inset:0;z-index:2147483600;align-items:center;justify-content:center;padding:28px;background:rgba(17,24,39,.86);cursor:zoom-out;overflow:auto;}\\n' +\n"
+    "        '#moba-tweaks-image-modal img{display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.45);cursor:zoom-in;}\\n' +\n"
+    "        '#moba-tweaks-image-modal.moba-image-modal--zoomed{display:block!important;text-align:center;}\\n' +\n"
+    "        '#moba-tweaks-image-modal.moba-image-modal--zoomed img{max-width:none;max-height:none;margin:0 auto;cursor:zoom-out;}\\n' +\n"
+    "        '#moba-tweaks-image-modal .moba-image-status{position:fixed;left:24px;top:20px;padding:6px 9px;border-radius:7px;background:rgba(255,255,255,.94);color:#344054;font:600 12px/16px Arial,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.2);pointer-events:none;}\\n' +\n",
+    'image modal zoom css'
+)
+
+replace_once(
+    "    var state = { enhanceTimer: 0, preview: null, imageModal: null, observer: null, enhancing: false, selectedProduct: null };",
+    "    var state = { enhanceTimer: 0, preview: null, imageModal: null, imageCache: {}, observer: null, enhancing: false, selectedProduct: null };",
+    'image cache state'
+)
+
+start = text.index('    function ensureImageModal() {')
+end = text.index('    function classifyStockStatus(text) {')
+if start < 0 or end < 0 or end <= start:
+    raise SystemExit('image block anchors not found')
+
+image_block = r'''    function ensureImageModal() {
+        if (state.imageModal && document.body.contains(state.imageModal)) return state.imageModal;
+
+        var modal = document.createElement('div');
+        modal.id = 'moba-tweaks-image-modal';
+        var img = document.createElement('img');
+        img.alt = '';
+        var status = document.createElement('div');
+        status.className = 'moba-image-status';
+        status.style.display = 'none';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '×';
+        close.title = 'Закрыть';
+        modal.appendChild(img);
+        modal.appendChild(status);
+        modal.appendChild(close);
+        document.body.appendChild(modal);
+
+        function closeModal() {
+            modal.style.display = 'none';
+            modal.classList.remove('moba-image-modal--zoomed');
+            modal.removeAttribute('data-product-url');
+            status.style.display = 'none';
+            img.removeAttribute('src');
+        }
+
+        close.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeModal();
+        });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeModal();
+        });
+        img.addEventListener('dblclick', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            modal.classList.toggle('moba-image-modal--zoomed');
+        });
+        modal.closeModal = closeModal;
+        state.imageModal = modal;
+        return modal;
+    }
+
+    function normalizeProductImageUrl(value, baseUrl) {
+        var raw = String(value || '').trim();
+        if (!raw) return '';
+        raw = raw.replace(/\\u002F/ig, '/').replace(/\\\//g, '/');
+
+        try {
+            var base = new URL(baseUrl || window.location.href, window.location.href);
+            var url = new URL(raw, base.href);
+
+            if (url.searchParams && url.searchParams.get('url') && /(?:_next\/image|image)/i.test(url.pathname)) {
+                var nested = url.searchParams.get('url');
+                try { nested = decodeURIComponent(nested); } catch (e) {}
+                var normalizedNested = normalizeProductImageUrl(nested, base.href);
+                if (normalizedNested) return normalizedNested;
+            }
+
+            var plainMatch = url.href.match(/\/plain\/local:\/\/(\/upload\/[^@?#]+)(?:@[^?#]+)?/i);
+            if (plainMatch && plainMatch[1]) return new URL(plainMatch[1], base.origin).href;
+
+            return url.href;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function pushUniqueImageCandidate(target, value, baseUrl) {
+        var normalized = normalizeProductImageUrl(value, baseUrl);
+        if (!normalized || /(?:logo|favicon|sprite|icon)/i.test(normalized)) return;
+        if (!/\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(normalized) && normalized.indexOf('/upload/') === -1) return;
+        if (target.indexOf(normalized) === -1) target.push(normalized);
+    }
+
+    function getProductPageImageCandidates(html, productUrl) {
+        var candidates = [];
+        var doc;
+        try {
+            doc = new DOMParser().parseFromString(html, 'text/html');
+        } catch (e) {
+            return candidates;
+        }
+
+        [
+            'meta[property="og:image"]',
+            'meta[property="og:image:secure_url"]',
+            'meta[name="twitter:image"]',
+            'link[rel="image_src"]'
+        ].forEach(function (selector) {
+            var node = doc.querySelector(selector);
+            if (!node) return;
+            pushUniqueImageCandidate(candidates, node.getAttribute('content') || node.getAttribute('href'), productUrl);
+        });
+
+        var scored = [];
+        Array.prototype.slice.call(doc.querySelectorAll('img')).forEach(function (node) {
+            var values = [
+                node.getAttribute('data-zoom-image'),
+                node.getAttribute('data-large'),
+                node.getAttribute('data-src'),
+                node.getAttribute('src')
+            ];
+            var srcset = node.getAttribute('srcset') || '';
+            if (srcset) {
+                srcset.split(',').forEach(function (part) {
+                    values.push(part.trim().split(/\s+/)[0]);
+                });
+            }
+
+            var context = '';
+            var current = node;
+            var depth = 0;
+            while (current && depth < 4) {
+                context += ' ' + String(current.id || '') + ' ' + String(current.className || '');
+                current = current.parentElement;
+                depth += 1;
+            }
+
+            values.forEach(function (value) {
+                var normalized = normalizeProductImageUrl(value, productUrl);
+                if (!normalized) return;
+                var score = 0;
+                if (normalized.indexOf('/upload/') !== -1) score += 80;
+                if (/(?:gallery|product|slider|swiper|photo|image)/i.test(context)) score += 80;
+                if (/(?:logo|favicon|sprite|icon|banner)/i.test(normalized + ' ' + context)) score -= 200;
+                scored.push({ url: normalized, score: score });
+            });
+        });
+
+        scored.sort(function (a, b) { return b.score - a.score; });
+        scored.forEach(function (item) {
+            pushUniqueImageCandidate(candidates, item.url, productUrl);
+        });
+
+        return candidates;
+    }
+
+    function loadProductPageImages(productUrl) {
+        if (!productUrl) return Promise.resolve([]);
+        if (state.imageCache[productUrl]) return state.imageCache[productUrl];
+
+        var promise = fetch(productUrl, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (html) {
+                return getProductPageImageCandidates(html, productUrl);
+            })
+            .catch(function () { return []; });
+
+        state.imageCache[productUrl] = promise;
+        return promise;
+    }
+
+    function setModalImageCandidates(img, candidates) {
+        var list = [];
+        (candidates || []).forEach(function (candidate) {
+            getPreviewCandidates(candidate).forEach(function (value) {
+                if (value && list.indexOf(value) === -1) list.push(value);
+            });
+        });
+        if (!list.length) return false;
+
+        var index = 0;
+        img.onerror = function () {
+            index += 1;
+            if (index < list.length) img.src = list[index];
+        };
+        img.src = list[0];
+        return true;
+    }
+
+    function openImageModal(sourceImg, productUrl) {
+        if (!sourceImg) return;
+        var modal = ensureImageModal();
+        var modalImg = modal.querySelector('img');
+        var status = modal.querySelector('.moba-image-status');
+        var resolvedProductUrl = productUrl || '';
+
+        modal.classList.remove('moba-image-modal--zoomed');
+        modal.dataset.productUrl = resolvedProductUrl;
+        modalImg.alt = sourceImg.alt || '';
+        modal.style.display = 'flex';
+        if (state.preview) state.preview.style.display = 'none';
+
+        setModalImageCandidates(modalImg, [sourceImg.currentSrc || sourceImg.src]);
+
+        if (!resolvedProductUrl) return;
+        status.textContent = 'Загружаю полноразмерное фото…';
+        status.style.display = 'block';
+
+        loadProductPageImages(resolvedProductUrl).then(function (candidates) {
+            if (!state.imageModal || state.imageModal.dataset.productUrl !== resolvedProductUrl) return;
+            if (candidates.length) setModalImageCandidates(modalImg, candidates);
+            status.style.display = 'none';
+        });
+    }
+
+    function enableHoverPreview(imageLink) {
+        if (!imageLink || imageLink.dataset.mobaPreviewReady === '1') return;
+        imageLink.dataset.mobaPreviewReady = '1';
+
+        var sourceImg = imageLink.querySelector('img');
+        if (!sourceImg) return;
+
+        imageLink.addEventListener('click', function (event) {
+            if (event.button !== 0 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openImageModal(sourceImg, imageLink.href || '');
+        });
+
+        imageLink.addEventListener('mouseenter', function (event) {
+            var box = ensurePreview();
+            var previewImg = box.querySelector('img');
+            var candidates = getPreviewCandidates(sourceImg.currentSrc || sourceImg.src);
+            var index = 0;
+
+            previewImg.onerror = function () {
+                index += 1;
+                if (index < candidates.length) previewImg.src = candidates[index];
+            };
+            previewImg.src = candidates[0];
+            previewImg.alt = sourceImg.alt || '';
+            box.style.display = 'block';
+            positionPreview(event);
+        });
+
+        imageLink.addEventListener('mousemove', positionPreview);
+        imageLink.addEventListener('mouseleave', function () {
+            ensurePreview().style.display = 'none';
+        });
+    }
+
+'''
+text = text[:start] + image_block + text[end:]
+
+stock_start = text.index('    function classifyStockStatus(text) {')
+stock_end = text.index('    function annotateArticle(article) {')
+if stock_start < 0 or stock_end < 0 or stock_end <= stock_start:
+    raise SystemExit('stock block anchors not found')
+
+stock_block = r'''    function classifyStockStatus(text) {
+        var value = normalizeSpaces(text).toLowerCase();
+        if (!value || value.length > 120) return '';
+        if (/(?:поступит|поступление|под\s+заказ|ожидается|ожидаем|в\s+пути|скоро\s+будет|поставка)/i.test(value)) return 'waiting';
+        if (/(?:самовывоз[^\n]{0,40}\bв\s+\d+\s+магазин|^в\s+\d+\s+магазин)/i.test(value)) return 'other-store';
+        if (/(?:нет\s+в\s+наличии|нет\s+на\s+складе|отсутствует|законч(?:ил|илс|илась|илось|ились)|распродано)/i.test(value)) return 'unavailable';
+        if (/(?:^|\s)(?:мало|заканчивается|последн(?:ий|яя|ие)|осталось\s+\d+)/i.test(value)) return 'limited';
+        if (/(?:^|\s)в\s+наличии(?:\s|$|:)/i.test(value)) return 'available';
+        return '';
+    }
+
+    function isVisibleStockNode(node) {
+        if (!node || !document.body.contains(node) || node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+        var style = window.getComputedStyle(node);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.getClientRects().length > 0;
+    }
+
+    function suppressNativeAvailableMarker(article) {
+        var nodes = Array.prototype.slice.call(article.querySelectorAll('span,div,p')).filter(function (node) {
+            return normalizeSpaces(node.textContent).toLowerCase() === 'в наличии';
+        });
+        nodes.forEach(function (node) {
+            var target = node;
+            var parent = node.parentElement;
+            if (parent && normalizeSpaces(parent.textContent).toLowerCase() === 'в наличии' && parent.children.length <= 4) target = parent;
+            target.classList.add('moba-stock-native-available-suppressed');
+        });
+    }
+
+    function annotateAvailability(article, wrapper) {
+        if (!article) return;
+        if (wrapper) {
+            wrapper.classList.remove(
+                'moba-stock-wrapper--unavailable',
+                'moba-stock-wrapper--waiting',
+                'moba-stock-wrapper--limited',
+                'moba-stock-wrapper--other-store'
+            );
+        }
+
+        var decorated = article.querySelectorAll('.moba-stock-status');
+        var p;
+        for (p = 0; p < decorated.length; p += 1) {
+            decorated[p].classList.remove(
+                'moba-stock-status',
+                'moba-stock-status--unavailable',
+                'moba-stock-status--waiting',
+                'moba-stock-status--limited',
+                'moba-stock-status--other-store',
+                'moba-stock-status--available'
+            );
+        }
+
+        var suppressed = article.querySelectorAll('.moba-stock-native-available-suppressed');
+        for (p = 0; p < suppressed.length; p += 1) suppressed[p].classList.remove('moba-stock-native-available-suppressed');
+
+        var candidates = Array.prototype.slice.call(article.querySelectorAll('span,div,p,a')).filter(function (node) {
+            if (!isVisibleStockNode(node)) return false;
+            var value = normalizeSpaces(node.textContent);
+            return value && value.length <= 120 && classifyStockStatus(value);
+        }).map(function (node) {
+            return { node: node, status: classifyStockStatus(node.textContent), length: normalizeSpaces(node.textContent).length };
+        });
+
+        if (!candidates.length) return;
+
+        var priority = { waiting: 0, 'other-store': 1, unavailable: 2, limited: 3, available: 4 };
+        candidates.sort(function (a, b) {
+            var pa = Object.prototype.hasOwnProperty.call(priority, a.status) ? priority[a.status] : 99;
+            var pb = Object.prototype.hasOwnProperty.call(priority, b.status) ? priority[b.status] : 99;
+            if (pa !== pb) return pa - pb;
+            return a.length - b.length;
+        });
+
+        var selected = candidates[0];
+        selected.node.classList.add('moba-stock-status', 'moba-stock-status--' + selected.status);
+
+        if (selected.status !== 'available') {
+            suppressNativeAvailableMarker(article);
+            if (wrapper) wrapper.classList.add('moba-stock-wrapper--' + selected.status);
+        }
+    }
+
+'''
+text = text[:stock_start] + stock_block + text[stock_end:]
+
+replace_once(
+    "        list.dataset.mobaGroupedVersion = '0.14.0';",
+    "        list.dataset.mobaGroupedVersion = '0.15.0';",
+    'group version'
+)
+
+path.write_text(text, encoding='utf-8')
