@@ -147,7 +147,7 @@ replacement = r'''    function classifyCompatibilityMatch(label) {
     }
 
     function buildGroupHeader'''
-text, count = pattern.subn(replacement, text, count=1)
+text, count = pattern.subn(lambda match: replacement, text, count=1)
 if count != 1:
     raise SystemExit(f'compatibility matcher: expected 1 match, got {count}')
 
