@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moba Tweaks
 // @namespace    local.gorchik.moba
-// @version      0.14.0
+// @version      0.15.0
 // @description  Moba Tweaks: широкая верстка, компактный поиск, понятные предметные группы и простая шкала качества — лучшие варианты сверху, бюджетные снизу.
 // @homepageURL  https://github.com/goreg39/moba-tweaks
 // @updateURL    https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
@@ -295,17 +295,23 @@
         '.moba-group-model{display:inline-block;margin-left:4px;padding:1px 5px;border-radius:5px;}\n' +
         '.moba-group-model--match{background:#e2f4e8;color:#176b3a;box-shadow:inset 0 0 0 1px #b9dfc7;}\n' +
         '.moba-group-model--mismatch{background:#fde8e7;color:#a9302a;box-shadow:inset 0 0 0 1px #efc0bd;}\n' +
-        '.moba-stock-status{display:inline-flex!important;align-items:center!important;min-height:18px!important;padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;}\n' +
+        '.moba-stock-status{padding:1px 6px!important;border-radius:5px!important;font-weight:700!important;line-height:16px!important;box-decoration-break:clone;-webkit-box-decoration-break:clone;}\n' +
         '.moba-stock-status--unavailable{background:#b42318!important;color:#fff!important;}\n' +
         '.moba-stock-status--waiting{background:#f79009!important;color:#fff!important;}\n' +
         '.moba-stock-status--limited{background:#fdb022!important;color:#4a3300!important;}\n' +
         '.moba-stock-status--available{color:#207a43!important;font-weight:700!important;}\n' +
+        '.moba-stock-status--other-store{background:#fff1d6!important;color:#9a4f00!important;box-shadow:inset 0 0 0 1px #f0c36a;}\n' +
+        '.moba-stock-native-available-suppressed{display:none!important;}\n' +
         '.moba-product-wrap.moba-stock-wrapper--unavailable{box-shadow:inset -5px 0 0 #d92d20!important;}\n' +
         '.moba-product-wrap.moba-stock-wrapper--unavailable .moba-product-title,.moba-product-wrap.moba-stock-wrapper--unavailable .moba-product-price{opacity:.62!important;}\n' +
         '.moba-product-wrap.moba-stock-wrapper--waiting{box-shadow:inset -5px 0 0 #f79009!important;}\n' +
         '.moba-product-wrap.moba-stock-wrapper--limited{box-shadow:inset -5px 0 0 #fdb022!important;}\n' +
-        '#moba-tweaks-image-modal{display:none;position:fixed;inset:0;z-index:2147483600;align-items:center;justify-content:center;padding:28px;background:rgba(17,24,39,.86);cursor:zoom-out;}\n' +
-        '#moba-tweaks-image-modal img{display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.45);cursor:default;}\n' +
+        '.moba-product-wrap.moba-stock-wrapper--other-store{box-shadow:inset -5px 0 0 #d97706!important;}\n' +
+        '#moba-tweaks-image-modal{display:none;position:fixed;inset:0;z-index:2147483600;align-items:center;justify-content:center;padding:28px;background:rgba(17,24,39,.86);cursor:zoom-out;overflow:auto;}\n' +
+        '#moba-tweaks-image-modal img{display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.45);cursor:zoom-in;}\n' +
+        '#moba-tweaks-image-modal.moba-image-modal--zoomed{display:block!important;text-align:center;}\n' +
+        '#moba-tweaks-image-modal.moba-image-modal--zoomed img{max-width:none;max-height:none;margin:0 auto;cursor:zoom-out;}\n' +
+        '#moba-tweaks-image-modal .moba-image-status{position:fixed;left:24px;top:20px;padding:6px 9px;border-radius:7px;background:rgba(255,255,255,.94);color:#344054;font:600 12px/16px Arial,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.2);pointer-events:none;}\n' +
         '#moba-tweaks-image-modal button{position:fixed;right:24px;top:18px;width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,255,255,.94);color:#222;font:700 26px/42px Arial,sans-serif;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.28);}\n' +
         '#moba-tweaks-image-preview{display:none;position:fixed;z-index:2147483000;width:410px;height:410px;padding:8px;background:#fff;border:1px solid #d9e2e8;border-radius:10px;box-shadow:0 14px 45px rgba(0,0,0,.24);pointer-events:none;}\n' +
         '#moba-tweaks-image-preview img{width:100%;height:100%;object-fit:contain;display:block;}\n'
@@ -314,7 +320,7 @@
     document.body.classList.add('moba-tweaks-global');
     if (!isSearchPage) return;
 
-    var state = { enhanceTimer: 0, preview: null, imageModal: null, observer: null, enhancing: false, selectedProduct: null };
+    var state = { enhanceTimer: 0, preview: null, imageModal: null, imageCache: {}, observer: null, enhancing: false, selectedProduct: null };
 
     function normalizeSpaces(text) {
         return String(text || '').replace(/\s+/g, ' ').trim();
@@ -1148,16 +1154,23 @@
         modal.id = 'moba-tweaks-image-modal';
         var img = document.createElement('img');
         img.alt = '';
+        var status = document.createElement('div');
+        status.className = 'moba-image-status';
+        status.style.display = 'none';
         var close = document.createElement('button');
         close.type = 'button';
         close.textContent = '×';
         close.title = 'Закрыть';
         modal.appendChild(img);
+        modal.appendChild(status);
         modal.appendChild(close);
         document.body.appendChild(modal);
 
         function closeModal() {
             modal.style.display = 'none';
+            modal.classList.remove('moba-image-modal--zoomed');
+            modal.removeAttribute('data-product-url');
+            status.style.display = 'none';
             img.removeAttribute('src');
         }
 
@@ -1169,25 +1182,171 @@
         modal.addEventListener('click', function (event) {
             if (event.target === modal) closeModal();
         });
+        img.addEventListener('dblclick', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            modal.classList.toggle('moba-image-modal--zoomed');
+        });
         modal.closeModal = closeModal;
         state.imageModal = modal;
         return modal;
     }
 
-    function openImageModal(sourceImg) {
+    function normalizeProductImageUrl(value, baseUrl) {
+        var raw = String(value || '').trim();
+        if (!raw) return '';
+        raw = raw.replace(/\\u002F/ig, '/').replace(/\\\//g, '/');
+
+        try {
+            var base = new URL(baseUrl || window.location.href, window.location.href);
+            var url = new URL(raw, base.href);
+
+            if (url.searchParams && url.searchParams.get('url') && /(?:_next\/image|image)/i.test(url.pathname)) {
+                var nested = url.searchParams.get('url');
+                try { nested = decodeURIComponent(nested); } catch (e) {}
+                var normalizedNested = normalizeProductImageUrl(nested, base.href);
+                if (normalizedNested) return normalizedNested;
+            }
+
+            var plainMatch = url.href.match(/\/plain\/local:\/\/(\/upload\/[^@?#]+)(?:@[^?#]+)?/i);
+            if (plainMatch && plainMatch[1]) return new URL(plainMatch[1], base.origin).href;
+
+            return url.href;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function pushUniqueImageCandidate(target, value, baseUrl) {
+        var normalized = normalizeProductImageUrl(value, baseUrl);
+        if (!normalized || /(?:logo|favicon|sprite|icon)/i.test(normalized)) return;
+        if (!/\.(?:jpe?g|png|webp|avif)(?:[?#]|$)/i.test(normalized) && normalized.indexOf('/upload/') === -1) return;
+        if (target.indexOf(normalized) === -1) target.push(normalized);
+    }
+
+    function getProductPageImageCandidates(html, productUrl) {
+        var candidates = [];
+        var doc;
+        try {
+            doc = new DOMParser().parseFromString(html, 'text/html');
+        } catch (e) {
+            return candidates;
+        }
+
+        [
+            'meta[property="og:image"]',
+            'meta[property="og:image:secure_url"]',
+            'meta[name="twitter:image"]',
+            'link[rel="image_src"]'
+        ].forEach(function (selector) {
+            var node = doc.querySelector(selector);
+            if (!node) return;
+            pushUniqueImageCandidate(candidates, node.getAttribute('content') || node.getAttribute('href'), productUrl);
+        });
+
+        var scored = [];
+        Array.prototype.slice.call(doc.querySelectorAll('img')).forEach(function (node) {
+            var values = [
+                node.getAttribute('data-zoom-image'),
+                node.getAttribute('data-large'),
+                node.getAttribute('data-src'),
+                node.getAttribute('src')
+            ];
+            var srcset = node.getAttribute('srcset') || '';
+            if (srcset) {
+                srcset.split(',').forEach(function (part) {
+                    values.push(part.trim().split(/\s+/)[0]);
+                });
+            }
+
+            var context = '';
+            var current = node;
+            var depth = 0;
+            while (current && depth < 4) {
+                context += ' ' + String(current.id || '') + ' ' + String(current.className || '');
+                current = current.parentElement;
+                depth += 1;
+            }
+
+            values.forEach(function (value) {
+                var normalized = normalizeProductImageUrl(value, productUrl);
+                if (!normalized) return;
+                var score = 0;
+                if (normalized.indexOf('/upload/') !== -1) score += 80;
+                if (/(?:gallery|product|slider|swiper|photo|image)/i.test(context)) score += 80;
+                if (/(?:logo|favicon|sprite|icon|banner)/i.test(normalized + ' ' + context)) score -= 200;
+                scored.push({ url: normalized, score: score });
+            });
+        });
+
+        scored.sort(function (a, b) { return b.score - a.score; });
+        scored.forEach(function (item) {
+            pushUniqueImageCandidate(candidates, item.url, productUrl);
+        });
+
+        return candidates;
+    }
+
+    function loadProductPageImages(productUrl) {
+        if (!productUrl) return Promise.resolve([]);
+        if (state.imageCache[productUrl]) return state.imageCache[productUrl];
+
+        var promise = fetch(productUrl, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (html) {
+                return getProductPageImageCandidates(html, productUrl);
+            })
+            .catch(function () { return []; });
+
+        state.imageCache[productUrl] = promise;
+        return promise;
+    }
+
+    function setModalImageCandidates(img, candidates) {
+        var list = [];
+        (candidates || []).forEach(function (candidate) {
+            getPreviewCandidates(candidate).forEach(function (value) {
+                if (value && list.indexOf(value) === -1) list.push(value);
+            });
+        });
+        if (!list.length) return false;
+
+        var index = 0;
+        img.onerror = function () {
+            index += 1;
+            if (index < list.length) img.src = list[index];
+        };
+        img.src = list[0];
+        return true;
+    }
+
+    function openImageModal(sourceImg, productUrl) {
         if (!sourceImg) return;
         var modal = ensureImageModal();
         var modalImg = modal.querySelector('img');
-        var candidates = getPreviewCandidates(sourceImg.currentSrc || sourceImg.src);
-        var index = 0;
-        modalImg.onerror = function () {
-            index += 1;
-            if (index < candidates.length) modalImg.src = candidates[index];
-        };
-        modalImg.src = candidates[0];
+        var status = modal.querySelector('.moba-image-status');
+        var resolvedProductUrl = productUrl || '';
+
+        modal.classList.remove('moba-image-modal--zoomed');
+        modal.dataset.productUrl = resolvedProductUrl;
         modalImg.alt = sourceImg.alt || '';
         modal.style.display = 'flex';
         if (state.preview) state.preview.style.display = 'none';
+
+        setModalImageCandidates(modalImg, [sourceImg.currentSrc || sourceImg.src]);
+
+        if (!resolvedProductUrl) return;
+        status.textContent = 'Загружаю полноразмерное фото…';
+        status.style.display = 'block';
+
+        loadProductPageImages(resolvedProductUrl).then(function (candidates) {
+            if (!state.imageModal || state.imageModal.dataset.productUrl !== resolvedProductUrl) return;
+            if (candidates.length) setModalImageCandidates(modalImg, candidates);
+            status.style.display = 'none';
+        });
     }
 
     function enableHoverPreview(imageLink) {
@@ -1201,7 +1360,7 @@
             if (event.button !== 0 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
             event.preventDefault();
             event.stopPropagation();
-            openImageModal(sourceImg);
+            openImageModal(sourceImg, imageLink.href || '');
         });
 
         imageLink.addEventListener('mouseenter', function (event) {
@@ -1228,38 +1387,85 @@
 
     function classifyStockStatus(text) {
         var value = normalizeSpaces(text).toLowerCase();
-        if (!value || value.length > 60) return '';
+        if (!value || value.length > 120) return '';
+        if (/(?:поступит|поступление|под\s+заказ|ожидается|ожидаем|в\s+пути|скоро\s+будет|поставка)/i.test(value)) return 'waiting';
+        if (/(?:самовывоз[^\n]{0,40}\bв\s+\d+\s+магазин|^в\s+\d+\s+магазин)/i.test(value)) return 'other-store';
         if (/(?:нет\s+в\s+наличии|нет\s+на\s+складе|отсутствует|законч(?:ил|илс|илась|илось|ились)|распродано)/i.test(value)) return 'unavailable';
-        if (/(?:под\s+заказ|ожидается|ожидаем|в\s+пути|скоро\s+будет|поставка)/i.test(value)) return 'waiting';
         if (/(?:^|\s)(?:мало|заканчивается|последн(?:ий|яя|ие)|осталось\s+\d+)/i.test(value)) return 'limited';
         if (/(?:^|\s)в\s+наличии(?:\s|$|:)/i.test(value)) return 'available';
         return '';
     }
 
+    function isVisibleStockNode(node) {
+        if (!node || !document.body.contains(node) || node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+        var style = window.getComputedStyle(node);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.getClientRects().length > 0;
+    }
+
+    function suppressNativeAvailableMarker(article) {
+        var nodes = Array.prototype.slice.call(article.querySelectorAll('span,div,p')).filter(function (node) {
+            return normalizeSpaces(node.textContent).toLowerCase() === 'в наличии';
+        });
+        nodes.forEach(function (node) {
+            var target = node;
+            var parent = node.parentElement;
+            if (parent && normalizeSpaces(parent.textContent).toLowerCase() === 'в наличии' && parent.children.length <= 4) target = parent;
+            target.classList.add('moba-stock-native-available-suppressed');
+        });
+    }
+
     function annotateAvailability(article, wrapper) {
         if (!article) return;
         if (wrapper) {
-            wrapper.classList.remove('moba-stock-wrapper--unavailable', 'moba-stock-wrapper--waiting', 'moba-stock-wrapper--limited');
+            wrapper.classList.remove(
+                'moba-stock-wrapper--unavailable',
+                'moba-stock-wrapper--waiting',
+                'moba-stock-wrapper--limited',
+                'moba-stock-wrapper--other-store'
+            );
         }
 
-        var previous = article.querySelectorAll('.moba-stock-status');
+        var decorated = article.querySelectorAll('.moba-stock-status');
         var p;
-        for (p = 0; p < previous.length; p += 1) {
-            previous[p].classList.remove('moba-stock-status', 'moba-stock-status--unavailable', 'moba-stock-status--waiting', 'moba-stock-status--limited', 'moba-stock-status--available');
+        for (p = 0; p < decorated.length; p += 1) {
+            decorated[p].classList.remove(
+                'moba-stock-status',
+                'moba-stock-status--unavailable',
+                'moba-stock-status--waiting',
+                'moba-stock-status--limited',
+                'moba-stock-status--other-store',
+                'moba-stock-status--available'
+            );
         }
 
-        var nodes = Array.prototype.slice.call(article.querySelectorAll('span,div,p')).filter(function (node) {
-            var text = normalizeSpaces(node.textContent);
-            return text && text.length <= 60 && classifyStockStatus(text);
-        });
-        if (!nodes.length) return;
-        nodes.sort(function (a, b) { return normalizeSpaces(a.textContent).length - normalizeSpaces(b.textContent).length; });
+        var suppressed = article.querySelectorAll('.moba-stock-native-available-suppressed');
+        for (p = 0; p < suppressed.length; p += 1) suppressed[p].classList.remove('moba-stock-native-available-suppressed');
 
-        var node = nodes[0];
-        var status = classifyStockStatus(node.textContent);
-        if (!status) return;
-        node.classList.add('moba-stock-status', 'moba-stock-status--' + status);
-        if (wrapper && status !== 'available') wrapper.classList.add('moba-stock-wrapper--' + status);
+        var candidates = Array.prototype.slice.call(article.querySelectorAll('span,div,p,a')).filter(function (node) {
+            if (!isVisibleStockNode(node)) return false;
+            var value = normalizeSpaces(node.textContent);
+            return value && value.length <= 120 && classifyStockStatus(value);
+        }).map(function (node) {
+            return { node: node, status: classifyStockStatus(node.textContent), length: normalizeSpaces(node.textContent).length };
+        });
+
+        if (!candidates.length) return;
+
+        var priority = { waiting: 0, 'other-store': 1, unavailable: 2, limited: 3, available: 4 };
+        candidates.sort(function (a, b) {
+            var pa = Object.prototype.hasOwnProperty.call(priority, a.status) ? priority[a.status] : 99;
+            var pb = Object.prototype.hasOwnProperty.call(priority, b.status) ? priority[b.status] : 99;
+            if (pa !== pb) return pa - pb;
+            return a.length - b.length;
+        });
+
+        var selected = candidates[0];
+        selected.node.classList.add('moba-stock-status', 'moba-stock-status--' + selected.status);
+
+        if (selected.status !== 'available') {
+            suppressNativeAvailableMarker(article);
+            if (wrapper) wrapper.classList.add('moba-stock-wrapper--' + selected.status);
+        }
     }
 
     function annotateArticle(article) {
@@ -1752,7 +1958,7 @@
             }
         }
 
-        list.dataset.mobaGroupedVersion = '0.14.0';
+        list.dataset.mobaGroupedVersion = '0.15.0';
     }
 
     function ensureFilterToggle(sidebar) {
