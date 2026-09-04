@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Moba Tweaks
 // @namespace    local.gorchik.moba
-// @version      0.12.1
+// @version      0.13.0
 // @description  Moba Tweaks: широкая верстка, компактный поиск, понятные предметные группы и простая шкала качества — лучшие варианты сверху, бюджетные снизу.
 // @homepageURL  https://github.com/goreg39/moba-tweaks
 // @updateURL    https://raw.githubusercontent.com/goreg39/moba-tweaks/main/moba-tweaks.user.js
@@ -222,6 +222,10 @@
         '.moba-quality-section.moba-quality-bg--lowest,.moba-product-wrap.moba-group-level-2.moba-quality-bg--lowest{border-left-color:#c43f35!important;}\n' +
         '.moba-quality-section.moba-quality-bg--unknown,.moba-product-wrap.moba-group-level-2.moba-quality-bg--unknown{border-left-color:#7b8790!important;}\n' +
 
+        '.moba-product-wrap.moba-keyboard-selected{position:relative!important;z-index:3!important;outline:3px solid #1c7bc9!important;outline-offset:-3px!important;box-shadow:0 0 0 2px rgba(28,123,201,.18),0 4px 14px rgba(0,0,0,.10)!important;}\n' +
+        '.moba-product-wrap.moba-keyboard-selected>article{position:relative!important;}\n' +
+        '.moba-product-wrap.moba-keyboard-selected>article:after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.75);}\n' +
+
         '#moba-tweaks-image-preview{display:none;position:fixed;z-index:2147483000;width:410px;height:410px;padding:8px;background:#fff;border:1px solid #d9e2e8;border-radius:10px;box-shadow:0 14px 45px rgba(0,0,0,.24);pointer-events:none;}\n' +
         '#moba-tweaks-image-preview img{width:100%;height:100%;object-fit:contain;display:block;}\n'
     );
@@ -229,7 +233,7 @@
     document.body.classList.add('moba-tweaks-global');
     if (!isSearchPage) return;
 
-    var state = { enhanceTimer: 0, preview: null, observer: null, enhancing: false };
+    var state = { enhanceTimer: 0, preview: null, observer: null, enhancing: false, selectedProduct: null };
 
     function normalizeSpaces(text) {
         return String(text || '').replace(/\s+/g, ' ').trim();
@@ -1145,6 +1149,159 @@
         });
     }
 
+
+    function isEditableTarget(target) {
+        if (!target || !target.tagName) return false;
+        var tagName = target.tagName.toLowerCase();
+        return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+    }
+
+    function isKeyboardProductVisible(wrapper) {
+        if (!wrapper || !document.body.contains(wrapper)) return false;
+        if (wrapper.hidden) return false;
+        var style = window.getComputedStyle(wrapper);
+        return style.display !== 'none' && style.visibility !== 'hidden' && wrapper.getClientRects().length > 0;
+    }
+
+    function getKeyboardProducts() {
+        var list = findProductList();
+        if (!list) return [];
+        return getProductWrappers(list).filter(isKeyboardProductVisible);
+    }
+
+    function clearKeyboardSelection() {
+        if (state.selectedProduct && state.selectedProduct.classList) {
+            state.selectedProduct.classList.remove('moba-keyboard-selected');
+            state.selectedProduct.removeAttribute('aria-current');
+        }
+        state.selectedProduct = null;
+    }
+
+    function selectKeyboardProduct(wrapper, shouldScroll) {
+        if (!wrapper || !isKeyboardProductVisible(wrapper)) return;
+        if (state.selectedProduct && state.selectedProduct !== wrapper && state.selectedProduct.classList) {
+            state.selectedProduct.classList.remove('moba-keyboard-selected');
+            state.selectedProduct.removeAttribute('aria-current');
+        }
+
+        state.selectedProduct = wrapper;
+        wrapper.classList.add('moba-keyboard-selected');
+        wrapper.setAttribute('aria-current', 'true');
+
+        if (shouldScroll !== false) {
+            wrapper.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+        }
+    }
+
+    function moveKeyboardSelection(direction) {
+        var products = getKeyboardProducts();
+        if (!products.length) {
+            clearKeyboardSelection();
+            return;
+        }
+
+        var currentIndex = state.selectedProduct ? products.indexOf(state.selectedProduct) : -1;
+        var nextIndex;
+
+        if (currentIndex < 0) {
+            nextIndex = direction > 0 ? 0 : products.length - 1;
+        } else {
+            nextIndex = currentIndex + direction;
+            if (nextIndex < 0) nextIndex = 0;
+            if (nextIndex >= products.length) nextIndex = products.length - 1;
+        }
+
+        selectKeyboardProduct(products[nextIndex], true);
+    }
+
+    function getSelectedProductLink() {
+        var wrapper = state.selectedProduct;
+        if (!wrapper || !isKeyboardProductVisible(wrapper)) return null;
+        var article = wrapper.querySelector(':scope > article');
+        if (!article) return null;
+        var titleSpan = getProductTitleSpan(article);
+        return (titleSpan && titleSpan.closest('a[href]')) || article.querySelector('a[href*="/catalog/"]');
+    }
+
+    function openSelectedProduct(newTab) {
+        var link = getSelectedProductLink();
+        if (!link || !link.href) return false;
+
+        if (newTab) {
+            window.open(link.href, '_blank', 'noopener');
+        } else {
+            link.click();
+        }
+        return true;
+    }
+
+    function findMainSearchInput() {
+        var inputs = Array.prototype.slice.call(document.querySelectorAll('header input'));
+        if (!inputs.length) inputs = Array.prototype.slice.call(document.querySelectorAll('input'));
+
+        var i;
+        for (i = 0; i < inputs.length; i += 1) {
+            var input = inputs[i];
+            var type = String(input.getAttribute('type') || 'text').toLowerCase();
+            var placeholder = String(input.getAttribute('placeholder') || '');
+            if (type === 'search' || /(?:поиск|найти|артикул|товар)/i.test(placeholder)) return input;
+        }
+        return null;
+    }
+
+    function ensureKeyboardNavigation() {
+        if (document.documentElement.dataset.mobaKeyboardNavigation === '1') return;
+        document.documentElement.dataset.mobaKeyboardNavigation = '1';
+
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented) return;
+
+            if (event.key === 'Escape') {
+                document.body.classList.remove('moba-filters-open');
+                if (state.preview) state.preview.style.display = 'none';
+                clearKeyboardSelection();
+                return;
+            }
+
+            if (isEditableTarget(event.target)) return;
+            if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+            if (event.key === '/') {
+                var searchInput = findMainSearchInput();
+                if (searchInput) {
+                    event.preventDefault();
+                    searchInput.focus();
+                    if (typeof searchInput.select === 'function') searchInput.select();
+                }
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                moveKeyboardSelection(1);
+                return;
+            }
+
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                moveKeyboardSelection(-1);
+                return;
+            }
+
+            if (event.key === 'Enter' && state.selectedProduct) {
+                if (openSelectedProduct(event.shiftKey)) event.preventDefault();
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            var target = event.target;
+            if (!target || !target.closest) return;
+            if (target.closest('.moba-category-row') || target.closest('.catalog-section-filter')) {
+                clearKeyboardSelection();
+            }
+        }, true);
+    }
+
     function restoreOurGrouping(list, wrappers) {
         var headers = list.querySelectorAll(':scope > .moba-group-header, :scope > .moba-quality-section');
         var i;
@@ -1335,7 +1492,7 @@
             }
         }
 
-        list.dataset.mobaGroupedVersion = '0.12.1';
+        list.dataset.mobaGroupedVersion = '0.13.0';
     }
 
     function ensureFilterToggle(sidebar) {
@@ -1417,6 +1574,10 @@
             }
 
             if (wrappers.length) groupProducts(list);
+
+            if (state.selectedProduct && !isKeyboardProductVisible(state.selectedProduct)) {
+                clearKeyboardSelection();
+            }
         } finally {
             state.enhancing = false;
             if (state.observer) {
@@ -1430,6 +1591,7 @@
         state.enhanceTimer = window.setTimeout(enhance, 140);
     }
 
+    ensureKeyboardNavigation();
     enhance();
 
     state.observer = new MutationObserver(scheduleEnhance);
